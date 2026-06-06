@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AR Physio Coach</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Raleway:wght@100..900&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                        raleway: ['Raleway', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+
+<body class="">
+
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- TOP CONTROL BAR -->
+        <div id="control-panel" class="border border-gray-300 rounded-lg p-4 bg-white mb-6">
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+
+                <!-- Exercise Select -->
+                <div class="flex flex-col">
+                    <label class="font-raleway text-base font-semibold text-gray-800 mb-2">
+                        Therapy Program
+                    </label>
+
+                    <select id="exercise-select" onchange="resetCounters()"
+                        class="h-12 px-4 border border-gray-300 rounded-lg font-inter focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                        <option value="left_curl">Left Arm (Bicep Mobility)</option>
+                        <option value="right_curl">Right Arm (Bicep Mobility)</option>
+                        <option value="squat">Full Body Squat</option>
+                        <option value="knee_ext">Knee Extension</option>
+                        <option value="shoulder_lat">Lateral Raise</option>
+                        <option value="shoulder_front">Front Raise</option>
+
+                    </select>
+                </div>
+
+                <!-- Goal -->
+                <div class="flex flex-col">
+                    <label class="font-raleway text-base font-semibold text-gray-800 mb-2">
+                        Goal
+                    </label>
+
+                    <input type="number" id="target-input" value="5" min="1"
+                        class="h-12 px-4 border border-gray-300 rounded-lg font-inter focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex flex-col gap-3">
+
+                    <button onclick="showInstructions()"
+                        class="h-8 bg-gray-100 hover:bg-gray-200 rounded-lg font-inter font-medium transition">
+
+                        Therapy Guide
+
+                    </button>
+
+                    <button onclick="resetCounters()"
+                        class="h-8 bg-black text-white hover:bg-gray-900 rounded-lg font-inter font-medium transition">
+
+                        Reset Session
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- CAMERA SECTION -->
+            <div class="lg:col-span-2">
+
+                <div id="video-container"
+                    class="relative bg-gray-100 rounded-xl overflow-hidden border border-gray-300 min-h-[420px] flex items-center justify-center">
+
+                    <video id="webcam" autoplay playsinline class="absolute inset-0 w-full h-full object-cover">
+                    </video>
+
+                    <canvas id="skeleton-canvas" width="640" height="480" class="absolute inset-0 w-full h-full">
+                    </canvas>
+
+                </div>
+
+            </div>
+
+            <!-- STATS PANEL -->
+            <div>
+
+                <div id="data-box"
+                    class="bg-gray-100 border border-gray-300 rounded-xl p-8 h-[480px] flex items-start justify-start font-inter text-xl text-gray-800">
+
+                    Initializing AR WebGL Engine...
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- INSTRUCTION MODAL -->
+    <div id="instruction-modal" style="display:none"
+        class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+
+        <div class="bg-white rounded-2xl p-8 w-[90%] max-w-xl">
+
+            <h2 id="guide-title" class="font-raleway text-3xl font-bold mb-4">
+                Exercise Name
+            </h2>
+
+            <p id="guide-text" class="font-inter text-gray-700 leading-7">
+                Instructions go here...
+            </p>
+
+            <button onclick="closeInstructions()" class="mt-6 bg-black text-white px-6 py-3 rounded-lg font-inter">
+
+                Got It, Let's Go
+
+            </button>
+
+        </div>
+
+    </div>
+
+    <script>
+
+        const videoBox = document.getElementById('webcam');
+        const canvasElement = document.getElementById('skeleton-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const dataDisplay = document.getElementById('data-box');
+        const exerciseSelect = document.getElementById('exercise-select');
+        const targetInput = document.getElementById('target-input');
+
+        let repCount = 0;
+        let exerciseStage = "up";
+        let workoutComplete = false;
+
+        const threeCanvas = document.createElement('canvas');
+        threeCanvas.id = "three-canvas";
+        document.getElementById('video-container').appendChild(threeCanvas);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(0, 640, 0, 480, -1000, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        renderer.setSize(640, 480);
+
+        const geometry = new THREE.TorusGeometry(12, 4, 16, 50);
+        const material = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true });
+        const arRingA = new THREE.Mesh(geometry, material);
+        const arRingB = new THREE.Mesh(geometry, material);
+        const arRingC = new THREE.Mesh(geometry, material);
+
+        arRingA.visible = false;
+        arRingB.visible = false;
+        arRingC.visible = false;
+        scene.add(arRingA, arRingB, arRingC);
+
+        const exerciseGuidebook = {
+            "left_curl": {
+                title: "Left Bicep Curl",
+                instructions: "1. Stand up straight.<br>2. Keep your left upper arm locked tightly to your ribs.<br>3. Bend your elbow to bring your hand up to your shoulder.<br>4. Slowly lower it back down."
+            },
+            "right_curl": {
+                title: "Right Bicep Curl",
+                instructions: "1. Stand up straight.<br>2. Keep your right upper arm locked tightly to your ribs.<br>3. Bend your elbow to bring your hand up to your shoulder.<br>4. Slowly lower it back down."
+            },
+            "squat": {
+                title: "Full Body Squat",
+                instructions: "1. Stand with feet shoulder-width apart.<br>2. Keep your back completely straight and chest up.<br>3. Bend your knees and push your hips back as if sitting in a chair.<br>4. Stand back up."
+            },
+            "knee_ext": {
+                title: "Seated Knee Extension",
+                instructions: "1. Sit upright in a sturdy chair.<br>2. Plant your feet flat on the floor.<br>3. Slowly straighten your injured leg straight out in front of you into the air.<br>4. Lower it slowly."
+            },
+            "shoulder_lat": {
+                title: "Lateral Shoulder Raise",
+                instructions: "1. Stand straight with your arms resting at your sides.<br>2. Keep your arm totally straight.<br>3. Raise your arm OUT to the side until it is parallel to the floor (making a 'T' shape).<br>4. Lower slowly."
+            },
+            "shoulder_front": {
+                title: "Front Shoulder Raise",
+                instructions: "1. Stand straight with your arms resting at your sides.<br>2. Keep your arm totally straight.<br>3. Raise your arm FORWARD directly in front of you until it is parallel to the floor.<br>4. Lower slowly."
+            }
+        };
+
+        function showInstructions() {
+            const currentMode = document.getElementById('exercise-select').value;
+            const guideInfo = exerciseGuidebook[currentMode];
+
+            document.getElementById('guide-title').innerHTML = guideInfo.title;
+            document.getElementById('guide-text').innerHTML = guideInfo.instructions;
+            document.getElementById('instruction-modal').style.display = "block";
+        }
+
+        function closeInstructions() {
+            document.getElementById('instruction-modal').style.display = "none";
+        }
+
+        function resetCounters() {
+            repCount = 0;
+            exerciseStage = "up";
+            workoutComplete = false;
+            dataDisplay.style.borderColor = "black";
+            dataDisplay.style.color = "black";
+        }
+
+        function sayOutLoud(text) {
+            if (window.speechSynthesis.speaking) return;
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        }
+
+        function calculateAngle(A, B, C) {
+            let v1 = { x: A.x - B.x, y: A.y - B.y, z: A.z - B.z };
+            let v2 = { x: C.x - B.x, y: C.y - B.y, z: C.z - B.z };
+
+            let dotProduct = (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
+            let mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
+            let mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y + v2.z * v2.z);
+
+            let cosAngle = dotProduct / (mag1 * mag2);
+
+            if (cosAngle > 1.0) cosAngle = 1.0;
+            if (cosAngle < -1.0) cosAngle = -1.0;
+
+            return (Math.acos(cosAngle) * 180.0) / Math.PI;
+        }
+
+        function onGotBodyPoints(results) {
+
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+
+            if (workoutComplete) return;
+
+
+            if (results.poseLandmarks) {
+                let pA, pB, pC;
+                const mode = exerciseSelect.value;
+                const targetGoal = parseInt(targetInput.value) || 5;
+
+
+                if (mode === "left_curl") {
+                    pA = results.poseLandmarks[11];
+                    pB = results.poseLandmarks[13];
+                    pC = results.poseLandmarks[15];
+                }
+                else if (mode === "right_curl") {
+                    pA = results.poseLandmarks[12];
+                    pB = results.poseLandmarks[14];
+                    pC = results.poseLandmarks[16];
+                }
+                else if (mode === "squat") {
+                    pA = results.poseLandmarks[24];
+                    pB = results.poseLandmarks[26];
+                    pC = results.poseLandmarks[28];
+                }
+                else if (mode === "knee_ext") {
+                    pA = results.poseLandmarks[24];
+                    pB = results.poseLandmarks[26];
+                    pC = results.poseLandmarks[28];
+                }
+                else if (mode === "shoulder_lat") {
+                    pA = results.poseLandmarks[24];
+                    pB = results.poseLandmarks[12];
+                    pC = results.poseLandmarks[14];
+                }
+                else if (mode === "shoulder_front") {
+                    pA = results.poseLandmarks[24];
+                    pB = results.poseLandmarks[12];
+                    pC = results.poseLandmarks[16];
+                }
+
+
+                const angle = calculateAngle(pA, pB, pC);
+
+                if (isNaN(angle) || pA.visibility < 0.55 || pB.visibility < 0.55 || pC.visibility < 0.55) {
+
+                    arRingA.visible = false;
+                    arRingB.visible = false;
+                    arRingC.visible = false;
+                    renderer.render(scene, camera);
+
+                    dataDisplay.innerHTML = `Tracking Lost... Step into frame.`;
+                    return;
+                }
+
+
+                arRingA.visible = true;
+                arRingB.visible = true;
+                arRingC.visible = true;
+
+
+                let boneColor = "#FF0000";
+                let status = "INCORRECT FORM";
+
+                if (mode === "left_curl" || mode === "right_curl") {
+                    if (angle < 90) {
+                        boneColor = "#1fd655";
+                        status = "PERFECT FLEXION!";
+                        exerciseStage = "down";
+                    }
+                    if (angle > 150 && exerciseStage === "down") {
+                        exerciseStage = "up";
+                        repCount++;
+                    }
+                }
+                else if (mode === "squat") {
+                    if (angle < 100) {
+                        boneColor = "black";
+                        status = "GREAT DEPTH!";
+                        exerciseStage = "down";
+                    }
+                    if (angle > 160 && exerciseStage === "down") {
+                        exerciseStage = "up";
+                        repCount++;
+                    }
+                }
+                else if (mode === "knee_ext") {
+                    if (angle < 110) {
+                        boneColor = "black";
+                        status = "READY FOR EXTENSION";
+                        exerciseStage = "down";
+                    }
+                    if (angle > 160 && exerciseStage === "down") {
+                        exerciseStage = "up";
+                        repCount++;
+                    }
+                }
+                else if (mode === "shoulder_lat" || mode === "shoulder_front") {
+                    if (angle < 30) {
+                        boneColor = "black";
+                        status = "ARM RESTING (READY)";
+                        exerciseStage = "down";
+                    }
+                    if (angle > 80 && exerciseStage === "down") {
+                        exerciseStage = "up";
+                        repCount++;
+                    }
+                }
+
+                if (repCount >= targetGoal && exerciseStage === "up") {
+                    workoutComplete = true;
+                    sayOutLoud("Workout complete! Great work!");
+                    dataDisplay.innerHTML = `<b>WORKOUT COMPLETE!</b>`;
+                    return;
+                } else if (exerciseStage === "up" && boneColor === "black") {
+                    sayOutLoud(`Repetition ${repCount}`);
+                }
+
+                const sX = pA.x * 640; const sY = pA.y * 480;
+                const eX = pB.x * 640; const eY = pB.y * 480;
+                const wX = pC.x * 640; const wY = pC.y * 480;
+
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(sX, sY);
+                canvasCtx.lineTo(eX, eY);
+                canvasCtx.strokeStyle = boneColor;
+                canvasCtx.lineWidth = 4;
+                canvasCtx.stroke();
+
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(eX, eY);
+                canvasCtx.lineTo(wX, wY);
+                canvasCtx.strokeStyle = boneColor;
+                canvasCtx.lineWidth = 4;
+                canvasCtx.stroke();
+
+                material.color.setHex(boneColor === "black" ? 0x00FF00 : 0xFF0000);
+
+                arRingA.position.set(sX, sY, pA.z * -640);
+                arRingB.position.set(eX, eY, pB.z * -640);
+                arRingC.position.set(wX, wY, pC.z * -640);
+
+                arRingA.rotation.x += 0.05; arRingA.rotation.y += 0.03;
+                arRingB.rotation.x += 0.05; arRingB.rotation.y += 0.03;
+                arRingC.rotation.x += 0.05; arRingC.rotation.y += 0.03;
+
+                renderer.render(scene, camera);
+
+                dataDisplay.style.borderColor = boneColor;
+                dataDisplay.style.color = boneColor;
+                dataDisplay.innerHTML = `<b>REPS:</b> ${repCount} / ${targetGoal}<br><b>ANGLE:</b> ${Math.round(angle)}°<br><b>STATUS:</b> ${status}`;
+            }
+        }
+
+        const poseEngine = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        poseEngine.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        poseEngine.onResults(onGotBodyPoints);
+
+        const cameraFlipbook = new Camera(videoBox, {
+            onFrame: async () => { await poseEngine.send({ image: videoBox }); },
+            width: 640,
+            height: 480
+        });
+        cameraFlipbook.start();
+    </script>
+</body>
+
+</html>

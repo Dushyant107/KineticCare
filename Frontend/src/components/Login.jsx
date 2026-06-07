@@ -32,10 +32,14 @@ const Login = () => {
         ? `${BASE_URL}/login`
         : `${BASE_URL}/register`
 
+        console.log("Sending request to:", endpoint);
+    console.log("Data:", formData);
+
       const res = await axios.post(
         endpoint,
         formData
       )
+       console.log("Response:", res.data);
 
       alert(res.data.message)
 
@@ -73,7 +77,9 @@ const Login = () => {
 
     } catch (error) {
 
-      console.log(error)
+      cconsole.log("FULL ERROR:", error);
+    console.log("RESPONSE:", error.response);
+    console.log("DATA:", error.response?.data);
 
       alert(error.response?.data?.message || error.message)
 

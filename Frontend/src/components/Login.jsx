@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 
 const Login = () => {
 
+  const BASE_URL = "https://kineticcare.onrender.com";
+
   const [isLogin, setIsLogin] = useState(true)
   const navigate = useNavigate()
 
@@ -27,8 +29,8 @@ const Login = () => {
     try {
 
       const endpoint = isLogin
-        ? 'http://localhost:5000/login'
-        : 'http://localhost:5000/register'
+        ? `${BASE_URL}/login`
+        : `${BASE_URL}/register`
 
       const res = await axios.post(
         endpoint,

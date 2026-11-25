@@ -3,7 +3,11 @@ import axios from 'axios';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// VITE_API_URL overrides; otherwise the deployed site uses the hosted backend
+// and local development uses the backend on this machine.
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://kinetic-care.vercel.app/api' : 'http://localhost:5000/api');
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

@@ -61,6 +61,11 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 KineticCare API server running on port ${PORT}`);
-});
+// On Vercel the app is served as a serverless function, so don't open a port there.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 KineticCare API server running on port ${PORT}`);
+  });
+}
+
+export default app;

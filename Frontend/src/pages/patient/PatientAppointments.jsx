@@ -6,6 +6,7 @@ import Button from '../../components/ui/Button';
 import Tabs from '../../components/ui/Tabs';
 import Skeleton from '../../components/ui/Skeleton';
 import EmptyState from '../../components/ui/EmptyState';
+import DemoNotice from '../../components/ui/DemoNotice';
 import { Calendar, Clock, Video, UserCheck, MapPin } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -49,6 +50,10 @@ export const PatientAppointments = () => {
           View scheduled online and in-person consultations with your assigned physiotherapist.
         </p>
       </div>
+
+      <DemoNotice>
+        Appointments are booked with demo therapists. No real consultation will take place, and this feature may not work right now.
+      </DemoNotice>
 
       <Tabs
         tabs={[

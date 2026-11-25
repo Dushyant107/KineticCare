@@ -4,6 +4,7 @@ import PatientSidebar from './PatientSidebar';
 import TherapistSidebar from './TherapistSidebar';
 import AdminSidebar from './AdminSidebar';
 import Topbar from './Topbar';
+import UnderConstructionNotice from '../ui/UnderConstructionNotice';
 
 export const AppLayout = ({ children }) => {
   const { user } = useAuth();
@@ -43,6 +44,7 @@ export const AppLayout = ({ children }) => {
 
         {/* Main Content Area */}
         <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
+          {user?.role === 'THERAPIST' && <UnderConstructionNotice className="mb-6" />}
           {children}
         </main>
       </div>

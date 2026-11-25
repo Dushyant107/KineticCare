@@ -23,6 +23,15 @@ const exerciseSessionSchema = new mongoose.Schema({
   bestROM: { type: Number, default: 0 },
   qualityScore: { type: Number, default: 0 }, // 0 to 100
   feedbackEvents: [{ type: String }],
+  // Per-rep measurements from the live tracker: joint excursion (deg), rep duration (s), score (0-100)
+  repDetails: [{
+    _id: false,
+    rom: Number,
+    durationSeconds: Number,
+    score: Number,
+  }],
+  trackingRatio: { type: Number, default: 1 }, // fraction of frames where the joint was visible
+  localDate: { type: String, index: true }, // patient's local calendar day "YYYY-MM-DD"
   therapistNote: { type: String, default: '' },
   completedAt: { type: Date, default: Date.now },
 }, { timestamps: true });

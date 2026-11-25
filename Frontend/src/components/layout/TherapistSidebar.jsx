@@ -6,7 +6,6 @@ import {
   ClipboardList,
   Clock,
   Calendar,
-  MessageSquare,
   FileText,
 } from 'lucide-react';
 
@@ -17,7 +16,6 @@ export const TherapistSidebar = ({ onClose }) => {
     { label: 'Program Builder', path: '/therapist/programs', icon: ClipboardList },
     { label: 'Set Availability', path: '/therapist/availability', icon: Clock },
     { label: 'Appointments', path: '/therapist/appointments', icon: Calendar },
-    { label: 'Messages', path: '/messages', icon: MessageSquare },
     { label: 'Reports', path: '/reports', icon: FileText },
   ];
 

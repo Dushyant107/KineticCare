@@ -3,444 +3,448 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>AR Physio Coach</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KineticCare Live Tracker</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Raleway:wght@100..900&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..900&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
-
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        inter: ['Inter', 'sans-serif'],
-                        raleway: ['Raleway', 'sans-serif'],
-                    }
-                }
-            }
-        }
+        tailwind.config = { theme: { extend: { fontFamily: { inter: ['Inter', 'sans-serif'] } } } }
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        html, body { background: transparent; }
+        .tile-label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+        .tile-value { font-variant-numeric: tabular-nums; }
+    </style>
 </head>
 
-<body class="">
+<body class="font-inter text-slate-900">
+    <div id="root" class="p-4 space-y-4">
 
+        <!-- CONTROL BAR -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-end gap-3">
+            <label class="flex flex-col gap-1 min-w-[200px] flex-1">
+                <span class="tile-label">Exercise</span>
+                <select id="exercise-select"
+                    class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    <option value="knee_ext">Seated Knee Extension</option>
+                    <option value="left_curl">Left Arm Bicep Curl</option>
+                    <option value="right_curl">Right Arm Bicep Curl</option>
+                    <option value="squat">Full Body Squat</option>
+                    <option value="shoulder_lat">Lateral Shoulder Raise</option>
+                    <option value="shoulder_front">Front Shoulder Raise</option>
+                </select>
+            </label>
 
-    <div class="max-w-7xl mx-auto px-6 py-8">
+            <label class="flex flex-col gap-1 w-28">
+                <span class="tile-label">Rep goal</span>
+                <input type="number" id="target-input" value="10" min="1" max="50"
+                    class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            </label>
 
-        <!-- TOP CONTROL BAR -->
-        <div id="control-panel" class="border border-gray-300 rounded-lg p-4 bg-white mb-6">
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-
-                <!-- Exercise Select -->
-                <div class="flex flex-col">
-                    <label class="font-raleway text-base font-semibold text-gray-800 mb-2">
-                        Therapy Program
-                    </label>
-
-                    <select id="exercise-select" onchange="resetCounters()"
-                        class="h-12 px-4 border border-gray-300 rounded-lg font-inter focus:outline-none focus:ring-2 focus:ring-blue-500">
-
-                        <option value="left_curl">Left Arm (Bicep Mobility)</option>
-                        <option value="right_curl">Right Arm (Bicep Mobility)</option>
-                        <option value="squat">Full Body Squat</option>
-                        <option value="knee_ext">Knee Extension</option>
-                        <option value="shoulder_lat">Lateral Raise</option>
-                        <option value="shoulder_front">Front Raise</option>
-
-                    </select>
-                </div>
-
-                <!-- Goal -->
-                <div class="flex flex-col">
-                    <label class="font-raleway text-base font-semibold text-gray-800 mb-2">
-                        Goal
-                    </label>
-
-                    <input type="number" id="target-input" value="5" min="1"
-                        class="h-12 px-4 border border-gray-300 rounded-lg font-inter focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-
-                <!-- Buttons -->
-                <div class="flex flex-col gap-3">
-
-                    <button onclick="showInstructions()"
-                        class="h-8 bg-gray-100 hover:bg-gray-200 rounded-lg font-inter font-medium transition">
-
-                        Therapy Guide
-
-                    </button>
-
-                    <button onclick="resetCounters()"
-                        class="h-8 bg-black text-white hover:bg-gray-900 rounded-lg font-inter font-medium transition">
-
-                        Reset Session
-
-                    </button>
-
-                </div>
-
-            </div>
-
+            <button onclick="showInstructions()"
+                class="h-10 px-4 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold transition">
+                How to do it
+            </button>
+            <button onclick="resetCounters()"
+                class="h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold transition">
+                Reset
+            </button>
         </div>
 
-        <!-- MAIN CONTENT -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- MAIN -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
 
-            <!-- CAMERA SECTION -->
+            <!-- CAMERA (fixed 4:3 so the skeleton overlay lines up with the video) -->
             <div class="lg:col-span-2">
-
                 <div id="video-container"
-                    class="relative bg-gray-100 rounded-xl overflow-hidden border border-gray-300 min-h-[420px] flex items-center justify-center">
-
-                    <video id="webcam" autoplay playsinline class="absolute inset-0 w-full h-full object-cover">
-                    </video>
-
-                    <canvas id="skeleton-canvas" width="640" height="480" class="absolute inset-0 w-full h-full">
-                    </canvas>
-
+                    class="relative w-full aspect-[4/3] bg-slate-900 rounded-xl overflow-hidden border border-slate-200">
+                    <video id="webcam" autoplay playsinline muted
+                        class="absolute inset-0 w-full h-full object-cover"></video>
+                    <canvas id="skeleton-canvas" width="640" height="480"
+                        class="absolute inset-0 w-full h-full"></canvas>
+                    <div id="camera-overlay"
+                        class="absolute inset-0 flex items-center justify-center text-slate-300 text-sm font-semibold">
+                        Starting camera and pose model…
+                    </div>
                 </div>
-
             </div>
 
             <!-- STATS PANEL -->
-            <div>
+            <div id="data-box" class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 min-h-0">
 
-                <div id="data-box"
-                    class="bg-gray-100 border border-gray-300 rounded-xl p-8 h-[480px] flex items-start justify-start font-inter text-xl text-gray-800">
-
-                    Initializing AR WebGL Engine...
-
+                <div id="status-banner"
+                    class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide bg-slate-100 text-slate-600 border border-slate-200">
+                    Waiting for pose…
                 </div>
 
+                <div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="tile-label">Repetitions</span>
+                        <span id="timer" class="text-xs font-semibold text-slate-500 tile-value">0:00</span>
+                    </div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="rep-count" class="text-5xl font-black tile-value leading-none">0</span>
+                        <span id="rep-goal" class="text-xl font-bold text-slate-400 tile-value">/ 10</span>
+                    </div>
+                    <div class="h-2 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                        <div id="rep-bar" class="h-full bg-emerald-500 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="tile-label">Joint angle</div>
+                        <div class="text-2xl font-extrabold tile-value mt-1"><span id="angle">–</span><span class="text-base text-slate-400">°</span></div>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="tile-label">Form quality</div>
+                        <div class="text-2xl font-extrabold tile-value mt-1"><span id="quality">–</span><span class="text-base text-slate-400">%</span></div>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="tile-label">Avg ROM / rep</div>
+                        <div class="text-2xl font-extrabold tile-value mt-1"><span id="avg-rom">–</span><span class="text-base text-slate-400">°</span></div>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="tile-label">Best ROM</div>
+                        <div class="text-2xl font-extrabold tile-value mt-1"><span id="best-rom">–</span><span class="text-base text-slate-400">°</span></div>
+                    </div>
+                </div>
+
+                <div class="text-xs text-slate-500 leading-relaxed">
+                    Target range: <b id="target-rom" class="text-slate-700">–</b> per rep.
+                    <span id="last-rep"></span>
+                </div>
+
+                <div class="mt-auto pt-2 border-t border-slate-100">
+                    <button id="finish-btn" onclick="finishSession()"
+                        class="w-full h-10 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-bold transition">
+                        Finish &amp; save session
+                    </button>
+                    <p id="finish-hint" class="text-[11px] text-slate-400 mt-1.5 text-center">Saves automatically when you reach your goal.</p>
+                </div>
             </div>
-
         </div>
-
     </div>
 
     <!-- INSTRUCTION MODAL -->
-    <div id="instruction-modal" style="display:none"
-        class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-
-        <div class="bg-white rounded-2xl p-8 w-[90%] max-w-xl">
-
-            <h2 id="guide-title" class="font-raleway text-3xl font-bold mb-4">
-                Exercise Name
-            </h2>
-
-            <p id="guide-text" class="font-inter text-gray-700 leading-7">
-                Instructions go here...
-            </p>
-
-            <button onclick="closeInstructions()" class="mt-6 bg-black text-white px-6 py-3 rounded-lg font-inter">
-
-                Got It, Let's Go
-
+    <div id="instruction-modal" style="display:none" class="fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-lg">
+            <h2 id="guide-title" class="text-xl font-bold mb-3">Exercise</h2>
+            <p id="guide-text" class="text-sm text-slate-700 leading-7"></p>
+            <button onclick="closeInstructions()" class="mt-5 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold">
+                Got it
             </button>
-
         </div>
-
     </div>
 
     <script>
+        // ---------- Exercise definitions ----------
+        // targetROM = degrees of joint excursion per rep (kept in sync with backend/services/stats.js)
+        const EXERCISES = {
+            left_curl: {
+                title: "Left Arm Bicep Curl", joints: [11, 13, 15], targetROM: 110,
+                isFlexed: (a) => a < 90, isExtended: (a) => a > 150,
+                goodLabel: "Good flexion", readyLabel: "Curl up",
+                instructions: "1. Stand up straight.<br>2. Keep your left upper arm tight to your ribs.<br>3. Bend the elbow to bring your hand to your shoulder.<br>4. Lower it slowly until the arm is straight."
+            },
+            right_curl: {
+                title: "Right Arm Bicep Curl", joints: [12, 14, 16], targetROM: 110,
+                isFlexed: (a) => a < 90, isExtended: (a) => a > 150,
+                goodLabel: "Good flexion", readyLabel: "Curl up",
+                instructions: "1. Stand up straight.<br>2. Keep your right upper arm tight to your ribs.<br>3. Bend the elbow to bring your hand to your shoulder.<br>4. Lower it slowly until the arm is straight."
+            },
+            squat: {
+                title: "Full Body Squat", joints: [24, 26, 28], targetROM: 80,
+                isFlexed: (a) => a < 100, isExtended: (a) => a > 160,
+                goodLabel: "Good depth", readyLabel: "Squat down",
+                instructions: "1. Feet shoulder-width apart.<br>2. Keep your back straight and chest up.<br>3. Push your hips back and bend your knees as if sitting in a chair.<br>4. Stand back up fully."
+            },
+            knee_ext: {
+                title: "Seated Knee Extension", joints: [24, 26, 28], targetROM: 70,
+                isFlexed: (a) => a < 110, isExtended: (a) => a > 160,
+                goodLabel: "Ready – extend", readyLabel: "Bend knee to start",
+                instructions: "1. Sit upright in a sturdy chair, side-on to the camera.<br>2. Feet flat on the floor.<br>3. Slowly straighten your right leg out in front of you.<br>4. Lower it slowly."
+            },
+            shoulder_lat: {
+                title: "Lateral Shoulder Raise", joints: [24, 12, 14], targetROM: 80,
+                isFlexed: (a) => a < 30, isExtended: (a) => a > 80,
+                goodLabel: "Ready – raise", readyLabel: "Lower arm to start",
+                instructions: "1. Stand straight, arms at your sides.<br>2. Keep the arm straight.<br>3. Raise your right arm out to the side until parallel to the floor.<br>4. Lower slowly."
+            },
+            shoulder_front: {
+                title: "Front Shoulder Raise", joints: [24, 12, 16], targetROM: 80,
+                isFlexed: (a) => a < 30, isExtended: (a) => a > 80,
+                goodLabel: "Ready – raise", readyLabel: "Lower arm to start",
+                instructions: "1. Stand straight, arms at your sides, side-on to the camera.<br>2. Keep the arm straight.<br>3. Raise your right arm forward until parallel to the floor.<br>4. Lower slowly."
+            }
+        };
 
-        const videoBox = document.getElementById('webcam');
-        const canvasElement = document.getElementById('skeleton-canvas');
+        // ---------- DOM ----------
+        const $ = (id) => document.getElementById(id);
+        const videoBox = $('webcam');
+        const canvasElement = $('skeleton-canvas');
         const canvasCtx = canvasElement.getContext('2d');
-        const dataDisplay = document.getElementById('data-box');
-        const exerciseSelect = document.getElementById('exercise-select');
-        const targetInput = document.getElementById('target-input');
+        const exerciseSelect = $('exercise-select');
+        const targetInput = $('target-input');
 
-        let repCount = 0;
-        let exerciseStage = "up";
-        let workoutComplete = false;
+        // Preselect from URL (?exercise=knee_ext&target=10)
+        const params = new URLSearchParams(location.search);
+        if (EXERCISES[params.get('exercise')]) exerciseSelect.value = params.get('exercise');
+        if (parseInt(params.get('target'))) targetInput.value = Math.min(50, parseInt(params.get('target')));
 
+        const postToParent = (msg) => {
+            if (window.parent && window.parent !== window) window.parent.postMessage(msg, '*');
+        };
+
+        // ---------- Session state ----------
+        let state;
+        function freshState() {
+            return {
+                repCount: 0,
+                stage: "up",            // "down" once the joint enters the start/flexed zone
+                complete: false,
+                startedAt: null,        // first frame with good tracking
+                framesTotal: 0,
+                framesTracked: 0,
+                repMin: Infinity,
+                repMax: -Infinity,
+                repStartedAt: null,
+                reps: [],               // { rom, durationSeconds, score }
+                lastAngle: null,
+            };
+        }
+        state = freshState();
+
+        function resetCounters() {
+            state = freshState();
+            canvasCtx.clearRect(0, 0, 640, 480);
+            setBanner("Waiting for pose…", "neutral");
+            $('finish-btn').disabled = false;
+            $('finish-hint').textContent = "Saves automatically when you reach your goal.";
+            render();
+        }
+
+        exerciseSelect.addEventListener('change', () => {
+            resetCounters();
+            postToParent({ type: 'KINETICCARE_EXERCISE_CHANGED', exerciseSlug: exerciseSelect.value });
+        });
+        targetInput.addEventListener('input', render);
+
+        // ---------- Metrics ----------
+        const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+
+        function scoreRep(rom, durationSeconds, targetROM) {
+            const romScore = Math.min(1, rom / targetROM);                 // full range = 1
+            let tempo = 1;                                                 // controlled 1.2–8 s per rep
+            if (durationSeconds < 1.2) tempo = 0.5;
+            else if (durationSeconds > 8) tempo = 0.75;
+            return Math.round((romScore * 0.7 + tempo * 0.3) * 100);
+        }
+
+        function sessionMetrics() {
+            const ex = EXERCISES[exerciseSelect.value];
+            const roms = state.reps.map(r => r.rom);
+            const trackingRatio = state.framesTotal ? state.framesTracked / state.framesTotal : 1;
+            const repQuality = avg(state.reps.map(r => r.score));
+            const quality = state.reps.length ? Math.round(repQuality * (0.85 + 0.15 * trackingRatio)) : null;
+            return {
+                exerciseSlug: exerciseSelect.value,
+                exerciseName: ex.title,
+                completedReps: state.repCount,
+                targetReps: parseInt(targetInput.value) || 10,
+                averageROM: roms.length ? Math.round(avg(roms)) : 0,
+                bestROM: roms.length ? Math.max(...roms) : 0,
+                qualityScore: quality ?? 0,
+                durationSeconds: state.startedAt ? Math.round((performance.now() - state.startedAt) / 1000) : 0,
+                trackingRatio: Math.round(trackingRatio * 100) / 100,
+                repDetails: state.reps,
+            };
+        }
+
+        // ---------- UI ----------
+        function setBanner(text, tone) {
+            const b = $('status-banner');
+            const tones = {
+                neutral: "bg-slate-100 text-slate-600 border-slate-200",
+                good: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                warn: "bg-amber-50 text-amber-700 border-amber-200",
+                bad: "bg-red-50 text-red-700 border-red-200",
+                done: "bg-sky-600 text-white border-sky-600",
+            };
+            b.className = "rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide border " + tones[tone];
+            b.textContent = text;
+        }
+
+        function render() {
+            const goal = parseInt(targetInput.value) || 10;
+            const m = sessionMetrics();
+            $('rep-count').textContent = state.repCount;
+            $('rep-goal').textContent = `/ ${goal}`;
+            $('rep-bar').style.width = Math.min(100, (state.repCount / goal) * 100) + "%";
+            $('angle').textContent = state.lastAngle == null ? "–" : Math.round(state.lastAngle);
+            $('quality').textContent = state.reps.length ? m.qualityScore : "–";
+            $('avg-rom').textContent = state.reps.length ? m.averageROM : "–";
+            $('best-rom').textContent = state.reps.length ? m.bestROM : "–";
+            $('target-rom').textContent = EXERCISES[exerciseSelect.value].targetROM + "°";
+            const last = state.reps[state.reps.length - 1];
+            $('last-rep').textContent = last ? ` Last rep: ${last.rom}° in ${last.durationSeconds}s (score ${last.score}).` : "";
+        }
+
+        setInterval(() => {
+            if (!state.startedAt || state.complete) return;
+            const s = Math.floor((performance.now() - state.startedAt) / 1000);
+            $('timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+        }, 500);
+
+        function showInstructions() {
+            const ex = EXERCISES[exerciseSelect.value];
+            $('guide-title').textContent = ex.title;
+            $('guide-text').innerHTML = ex.instructions;
+            $('instruction-modal').style.display = "flex";
+        }
+        function closeInstructions() { $('instruction-modal').style.display = "none"; }
+
+        function sayOutLoud(text) {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        }
+
+        // ---------- Finish ----------
+        function finishSession(auto = false) {
+            if (state.complete && !auto) return;
+            if (state.repCount < 1) {
+                setBanner("Do at least one rep before saving", "warn");
+                postToParent({ type: 'KINETICCARE_SESSION_EMPTY' });
+                return;
+            }
+            state.complete = true;
+            $('finish-btn').disabled = true;
+            $('finish-hint').textContent = "Session sent. Press Reset to go again.";
+            setBanner(auto ? "Goal reached – session saved" : "Session saved", "done");
+            render();
+            postToParent({ type: 'KINETICCARE_SESSION_COMPLETE', ...sessionMetrics() });
+        }
+
+        // Parent page can ask us to finish (its "Complete Session" button).
+        window.addEventListener('message', (e) => {
+            if (e.data && e.data.type === 'KINETICCARE_FINISH') finishSession();
+        });
+
+        // Tell the parent how tall we are so the iframe never scrolls/clips.
+        new ResizeObserver(() => {
+            postToParent({ type: 'KINETICCARE_RESIZE', height: document.getElementById('root').scrollHeight });
+        }).observe(document.getElementById('root'));
+
+        // ---------- AR overlay ----------
         const threeCanvas = document.createElement('canvas');
-        threeCanvas.id = "three-canvas";
-        document.getElementById('video-container').appendChild(threeCanvas);
+        threeCanvas.className = "absolute inset-0 w-full h-full pointer-events-none";
+        $('video-container').appendChild(threeCanvas);
 
         const scene = new THREE.Scene();
         const camera = new THREE.OrthographicCamera(0, 640, 0, 480, -1000, 1000);
         const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
-        renderer.setSize(640, 480);
+        renderer.setSize(640, 480, false);
 
         const geometry = new THREE.TorusGeometry(12, 4, 16, 50);
         const material = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true });
-        const arRingA = new THREE.Mesh(geometry, material);
-        const arRingB = new THREE.Mesh(geometry, material);
-        const arRingC = new THREE.Mesh(geometry, material);
-
-        arRingA.visible = false;
-        arRingB.visible = false;
-        arRingC.visible = false;
-        scene.add(arRingA, arRingB, arRingC);
-
-        const exerciseGuidebook = {
-            "left_curl": {
-                title: "Left Bicep Curl",
-                instructions: "1. Stand up straight.<br>2. Keep your left upper arm locked tightly to your ribs.<br>3. Bend your elbow to bring your hand up to your shoulder.<br>4. Slowly lower it back down."
-            },
-            "right_curl": {
-                title: "Right Bicep Curl",
-                instructions: "1. Stand up straight.<br>2. Keep your right upper arm locked tightly to your ribs.<br>3. Bend your elbow to bring your hand up to your shoulder.<br>4. Slowly lower it back down."
-            },
-            "squat": {
-                title: "Full Body Squat",
-                instructions: "1. Stand with feet shoulder-width apart.<br>2. Keep your back completely straight and chest up.<br>3. Bend your knees and push your hips back as if sitting in a chair.<br>4. Stand back up."
-            },
-            "knee_ext": {
-                title: "Seated Knee Extension",
-                instructions: "1. Sit upright in a sturdy chair.<br>2. Plant your feet flat on the floor.<br>3. Slowly straighten your injured leg straight out in front of you into the air.<br>4. Lower it slowly."
-            },
-            "shoulder_lat": {
-                title: "Lateral Shoulder Raise",
-                instructions: "1. Stand straight with your arms resting at your sides.<br>2. Keep your arm totally straight.<br>3. Raise your arm OUT to the side until it is parallel to the floor (making a 'T' shape).<br>4. Lower slowly."
-            },
-            "shoulder_front": {
-                title: "Front Shoulder Raise",
-                instructions: "1. Stand straight with your arms resting at your sides.<br>2. Keep your arm totally straight.<br>3. Raise your arm FORWARD directly in front of you until it is parallel to the floor.<br>4. Lower slowly."
-            }
-        };
-
-        function showInstructions() {
-            const currentMode = document.getElementById('exercise-select').value;
-            const guideInfo = exerciseGuidebook[currentMode];
-
-            document.getElementById('guide-title').innerHTML = guideInfo.title;
-            document.getElementById('guide-text').innerHTML = guideInfo.instructions;
-            document.getElementById('instruction-modal').style.display = "block";
-        }
-
-        function closeInstructions() {
-            document.getElementById('instruction-modal').style.display = "none";
-        }
-
-        function resetCounters() {
-            repCount = 0;
-            exerciseStage = "up";
-            workoutComplete = false;
-            dataDisplay.style.borderColor = "black";
-            dataDisplay.style.color = "black";
-        }
-
-        function sayOutLoud(text) {
-            if (window.speechSynthesis.speaking) return;
-            window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-        }
+        const rings = [new THREE.Mesh(geometry, material), new THREE.Mesh(geometry, material), new THREE.Mesh(geometry, material)];
+        rings.forEach(r => { r.visible = false; scene.add(r); });
 
         function calculateAngle(A, B, C) {
-            let v1 = { x: A.x - B.x, y: A.y - B.y, z: A.z - B.z };
-            let v2 = { x: C.x - B.x, y: C.y - B.y, z: C.z - B.z };
-
-            let dotProduct = (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
-            let mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
-            let mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y + v2.z * v2.z);
-
-            let cosAngle = dotProduct / (mag1 * mag2);
-
-            if (cosAngle > 1.0) cosAngle = 1.0;
-            if (cosAngle < -1.0) cosAngle = -1.0;
-
-            return (Math.acos(cosAngle) * 180.0) / Math.PI;
+            const v1 = { x: A.x - B.x, y: A.y - B.y, z: A.z - B.z };
+            const v2 = { x: C.x - B.x, y: C.y - B.y, z: C.z - B.z };
+            const dot = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+            const m1 = Math.hypot(v1.x, v1.y, v1.z), m2 = Math.hypot(v2.x, v2.y, v2.z);
+            const cos = Math.max(-1, Math.min(1, dot / (m1 * m2)));
+            return Math.acos(cos) * 180 / Math.PI;
         }
 
+        // ---------- Pose loop ----------
         function onGotBodyPoints(results) {
+            $('camera-overlay').style.display = "none";
+            canvasCtx.clearRect(0, 0, 640, 480);
+            if (state.complete) return;
 
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            const ex = EXERCISES[exerciseSelect.value];
+            const goal = parseInt(targetInput.value) || 10;
+            if (state.startedAt) state.framesTotal++;
 
+            const lm = results.poseLandmarks;
+            const pts = lm ? ex.joints.map(i => lm[i]) : null;
+            const visible = pts && pts.every(p => p && p.visibility >= 0.55);
+            const angle = visible ? calculateAngle(pts[0], pts[1], pts[2]) : NaN;
 
-            if (workoutComplete) return;
-
-
-            if (results.poseLandmarks) {
-                let pA, pB, pC;
-                const mode = exerciseSelect.value;
-                const targetGoal = parseInt(targetInput.value) || 5;
-
-
-                if (mode === "left_curl") {
-                    pA = results.poseLandmarks[11];
-                    pB = results.poseLandmarks[13];
-                    pC = results.poseLandmarks[15];
-                }
-                else if (mode === "right_curl") {
-                    pA = results.poseLandmarks[12];
-                    pB = results.poseLandmarks[14];
-                    pC = results.poseLandmarks[16];
-                }
-                else if (mode === "squat") {
-                    pA = results.poseLandmarks[24];
-                    pB = results.poseLandmarks[26];
-                    pC = results.poseLandmarks[28];
-                }
-                else if (mode === "knee_ext") {
-                    pA = results.poseLandmarks[24];
-                    pB = results.poseLandmarks[26];
-                    pC = results.poseLandmarks[28];
-                }
-                else if (mode === "shoulder_lat") {
-                    pA = results.poseLandmarks[24];
-                    pB = results.poseLandmarks[12];
-                    pC = results.poseLandmarks[14];
-                }
-                else if (mode === "shoulder_front") {
-                    pA = results.poseLandmarks[24];
-                    pB = results.poseLandmarks[12];
-                    pC = results.poseLandmarks[16];
-                }
-
-
-                const angle = calculateAngle(pA, pB, pC);
-
-                if (isNaN(angle) || pA.visibility < 0.55 || pB.visibility < 0.55 || pC.visibility < 0.55) {
-
-                    arRingA.visible = false;
-                    arRingB.visible = false;
-                    arRingC.visible = false;
-                    renderer.render(scene, camera);
-
-                    dataDisplay.innerHTML = `Tracking Lost... Step into frame.`;
-                    return;
-                }
-
-
-                arRingA.visible = true;
-                arRingB.visible = true;
-                arRingC.visible = true;
-
-
-                let boneColor = "#FF0000";
-                let status = "INCORRECT FORM";
-
-                if (mode === "left_curl" || mode === "right_curl") {
-                    if (angle < 90) {
-                        boneColor = "#1fd655";
-                        status = "PERFECT FLEXION!";
-                        exerciseStage = "down";
-                    }
-                    if (angle > 150 && exerciseStage === "down") {
-                        exerciseStage = "up";
-                        repCount++;
-                    }
-                }
-                else if (mode === "squat") {
-                    if (angle < 100) {
-                        boneColor = "black";
-                        status = "GREAT DEPTH!";
-                        exerciseStage = "down";
-                    }
-                    if (angle > 160 && exerciseStage === "down") {
-                        exerciseStage = "up";
-                        repCount++;
-                    }
-                }
-                else if (mode === "knee_ext") {
-                    if (angle < 110) {
-                        boneColor = "black";
-                        status = "READY FOR EXTENSION";
-                        exerciseStage = "down";
-                    }
-                    if (angle > 160 && exerciseStage === "down") {
-                        exerciseStage = "up";
-                        repCount++;
-                    }
-                }
-                else if (mode === "shoulder_lat" || mode === "shoulder_front") {
-                    if (angle < 30) {
-                        boneColor = "black";
-                        status = "ARM RESTING (READY)";
-                        exerciseStage = "down";
-                    }
-                    if (angle > 80 && exerciseStage === "down") {
-                        exerciseStage = "up";
-                        repCount++;
-                    }
-                }
-
-                let peakAngleTracker = window.peakAngleTracker || 0;
-                let romSamples = window.romSamples || [];
-
-                if (!isNaN(angle)) {
-                  peakAngleTracker = Math.max(peakAngleTracker, Math.round(angle));
-                  romSamples.push(Math.round(angle));
-                  window.peakAngleTracker = peakAngleTracker;
-                  window.romSamples = romSamples;
-                }
-
-                if (repCount >= targetGoal && exerciseStage === "up") {
-                    workoutComplete = true;
-                    sayOutLoud("Workout complete! Great work!");
-                    dataDisplay.innerHTML = `<b>WORKOUT COMPLETE!</b>`;
-                    const avgCalculated = romSamples.length ? Math.round(romSamples.reduce((a, b) => a + b, 0) / romSamples.length) : Math.round(angle) || 120;
-                    if (window.parent && window.parent !== window) {
-                        window.parent.postMessage({
-                            type: 'KINETICCARE_SESSION_COMPLETE',
-                            exerciseSlug: mode,
-                            completedReps: repCount,
-                            targetReps: targetGoal,
-                            averageROM: avgCalculated,
-                            bestROM: peakAngleTracker || (avgCalculated + 6),
-                            qualityScore: 92,
-                            durationSeconds: 300
-                        }, '*');
-                    }
-                    return;
-                } else if (exerciseStage === "up" && boneColor === "black") {
-                    sayOutLoud(`Repetition ${repCount}`);
-                }
-
-                const sX = pA.x * 640; const sY = pA.y * 480;
-                const eX = pB.x * 640; const eY = pB.y * 480;
-                const wX = pC.x * 640; const wY = pC.y * 480;
-
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(sX, sY);
-                canvasCtx.lineTo(eX, eY);
-                canvasCtx.strokeStyle = boneColor;
-                canvasCtx.lineWidth = 4;
-                canvasCtx.stroke();
-
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(eX, eY);
-                canvasCtx.lineTo(wX, wY);
-                canvasCtx.strokeStyle = boneColor;
-                canvasCtx.lineWidth = 4;
-                canvasCtx.stroke();
-
-                material.color.setHex(boneColor === "black" ? 0x00FF00 : 0xFF0000);
-
-                arRingA.position.set(sX, sY, pA.z * -640);
-                arRingB.position.set(eX, eY, pB.z * -640);
-                arRingC.position.set(wX, wY, pC.z * -640);
-
-                arRingA.rotation.x += 0.05; arRingA.rotation.y += 0.03;
-                arRingB.rotation.x += 0.05; arRingB.rotation.y += 0.03;
-                arRingC.rotation.x += 0.05; arRingC.rotation.y += 0.03;
-
+            if (!visible || isNaN(angle)) {
+                rings.forEach(r => r.visible = false);
                 renderer.render(scene, camera);
-
-                dataDisplay.style.borderColor = boneColor;
-                dataDisplay.style.color = boneColor;
-                dataDisplay.innerHTML = `<b>REPS:</b> ${repCount} / ${targetGoal}<br><b>ANGLE:</b> ${Math.round(angle)}°<br><b>STATUS:</b> ${status}`;
+                setBanner("Tracking lost – step into frame", "bad");
+                state.lastAngle = null;
+                render();
+                return;
             }
+
+            const now = performance.now();
+            if (!state.startedAt) { state.startedAt = now; state.framesTotal = 1; }
+            state.framesTracked++;
+            state.lastAngle = angle;
+            if (state.repStartedAt == null) state.repStartedAt = now;
+            state.repMin = Math.min(state.repMin, angle);
+            state.repMax = Math.max(state.repMax, angle);
+
+            // Rep state machine: enter the "flexed/start" zone, then reach the "extended" zone = 1 rep.
+            let good = false;
+            if (ex.isFlexed(angle)) { state.stage = "down"; good = true; }
+            if (ex.isExtended(angle) && state.stage === "down") {
+                state.stage = "up";
+                const rom = Math.round(state.repMax - state.repMin);
+                const durationSeconds = Math.round((now - state.repStartedAt) / 100) / 10;
+                state.reps.push({ rom, durationSeconds, score: scoreRep(rom, durationSeconds, ex.targetROM) });
+                state.repCount++;
+                state.repMin = angle; state.repMax = angle; state.repStartedAt = now;
+                if (state.repCount < goal) sayOutLoud(`${state.repCount}`);
+            }
+
+            if (state.repCount >= goal) {
+                sayOutLoud("Workout complete. Great work!");
+                finishSession(true);
+                return;
+            }
+
+            setBanner(good ? ex.goodLabel : (state.stage === "down" ? "Keep going – full range" : ex.readyLabel), good ? "good" : "warn");
+
+            // Draw limb + AR joint rings
+            const color = good ? "#10b981" : "#f59e0b";
+            const xy = pts.map(p => [p.x * 640, p.y * 480]);
+            canvasCtx.lineWidth = 5;
+            canvasCtx.strokeStyle = color;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(xy[0][0], xy[0][1]);
+            canvasCtx.lineTo(xy[1][0], xy[1][1]);
+            canvasCtx.lineTo(xy[2][0], xy[2][1]);
+            canvasCtx.stroke();
+
+            material.color.setHex(good ? 0x10b981 : 0xf59e0b);
+            rings.forEach((r, i) => {
+                r.visible = true;
+                r.position.set(xy[i][0], xy[i][1], pts[i].z * -640);
+                r.rotation.x += 0.05; r.rotation.y += 0.03;
+            });
+            renderer.render(scene, camera);
+            render();
         }
 
         const poseEngine = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        poseEngine.setOptions({
-            modelComplexity: 1,
-            smoothLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+        poseEngine.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         poseEngine.onResults(onGotBodyPoints);
 
         const cameraFlipbook = new Camera(videoBox, {
@@ -448,7 +452,12 @@
             width: 640,
             height: 480
         });
-        cameraFlipbook.start();
+        cameraFlipbook.start().catch(() => {
+            $('camera-overlay').textContent = "Camera unavailable. Allow camera access and reload.";
+        });
+
+        render();
+        postToParent({ type: 'KINETICCARE_EXERCISE_CHANGED', exerciseSlug: exerciseSelect.value });
     </script>
 </body>
 

@@ -1,22 +1,36 @@
 import Report from '../models/Report.js';
 import ExerciseSession from '../models/ExerciseSession.js';
 import PatientProfile from '../models/PatientProfile.js';
+import { serverDateKey, summarizeSessions, exerciseBreakdown, EXERCISE_CATALOG } from '../services/stats.js';
 
 export const generateReport = async (req, res) => {
   try {
     const patientId = req.body.patientId || req.user._id;
 
-    const sessions = await ExerciseSession.find({ patientId }).sort({ completedAt: -1 });
+    const sessions = await ExerciseSession.find({ patientId }).sort({ completedAt: -1 }).lean();
     const profile = await PatientProfile.findOne({ userId: patientId });
+    const stats = summarizeSessions(sessions, serverDateKey());
+    const breakdown = exerciseBreakdown(sessions, serverDateKey());
 
     const totalSessions = sessions.length;
-    const avgQuality = totalSessions ? Math.round(sessions.reduce((acc, s) => acc + s.qualityScore, 0) / totalSessions) : 85;
-    const avgROM = totalSessions ? Math.round(sessions.reduce((acc, s) => acc + s.averageROM, 0) / totalSessions) : 100;
+    const avgQuality = stats.avgQuality ?? 0;
+    const avgROM = stats.avgROM ?? 0;
 
-    const defaultPrescribed = [
-      { exerciseName: 'Seated Knee Extension', sets: 3, reps: 10, targetROM: 160, prescribedDurationMinutes: 15 },
-      { exerciseName: 'Full Body Squat', sets: 3, reps: 8, targetROM: 90, prescribedDurationMinutes: 10 },
-    ];
+    const defaultPrescribed = breakdown.slice(0, 4).map((ex) => ({
+      exerciseName: ex.exerciseName,
+      sets: 3,
+      reps: ex.lastTargetReps || 10,
+      targetROM: EXERCISE_CATALOG[ex.exerciseSlug]?.targetROM || 90,
+      prescribedDurationMinutes: 10,
+    }));
+
+    const observations = totalSessions
+      ? [
+          `${totalSessions} AI-tracked sessions completed, ${stats.totalReps} total repetitions over ${stats.activeDays} active days.`,
+          `Average form quality ${avgQuality}% and average range of motion ${avgROM}°.`,
+          `Current streak ${stats.currentStreak} days (longest ${stats.longestStreak}).`,
+        ]
+      : ['No AI-tracked sessions recorded yet.'];
 
     const report = await Report.create({
       patientId,
@@ -24,16 +38,12 @@ export const generateReport = async (req, res) => {
       title: req.body.title || `Rehabilitation Clinical Report — ${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`,
       dateRange: req.body.dateRange || 'Last 30 Days',
       sessionsCompleted: totalSessions,
-      adherenceRate: req.body.adherenceRate || (totalSessions > 0 ? 100 : 85),
+      adherenceRate: req.body.adherenceRate ?? Math.round((stats.activeDays ? Math.min(stats.activeDays, 30) / 30 : 0) * 100),
       averageQuality: avgQuality,
       averageROM: avgROM,
-      recoveryScore: profile ? profile.recoveryScore : 84,
-      aiObservations: req.body.aiObservations || [
-        'Patient consistently maintains optimal joint alignment during terminal flexion.',
-        'Range of Motion showed a steady progression with zero form fatigue flags.',
-        'Adherence rate to prescribed daily exercises remains excellent.',
-      ],
-      therapistNotes: req.body.therapistNotes || 'Patient is responding very well to the current therapy protocol. Continue daily knee extensions and quad strengthening.',
+      recoveryScore: stats.recoveryScore ?? 0,
+      aiObservations: req.body.aiObservations || observations,
+      therapistNotes: req.body.therapistNotes || 'Auto-generated from AI session data. No therapist review yet.',
       prescribedExercises: req.body.prescribedExercises || defaultPrescribed,
       prescribedDailyDurationMinutes: req.body.prescribedDailyDurationMinutes || 25,
       status: 'PUBLISHED',

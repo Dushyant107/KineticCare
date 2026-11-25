@@ -5,7 +5,8 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import Card from './ui/Card';
 import Badge from './ui/Badge';
-import { User, Stethoscope, Mail, Lock, UserCheck } from 'lucide-react';
+import { User, Stethoscope, Mail, Lock, UserCheck, Monitor } from 'lucide-react';
+import UnderConstructionNotice from './ui/UnderConstructionNotice';
 
 export const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -76,6 +77,15 @@ export const Login = () => {
           </p>
         </div>
 
+        {/* Device recommendation */}
+        <div className="flex items-start gap-2.5 p-3 rounded-xl border border-sky-200 bg-sky-50 text-xs text-sky-900">
+          <Monitor className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            <span className="font-bold">Best on a laptop or desktop.</span> The mobile layout isn't fully optimised yet,
+            and the live AI session needs a webcam with your full body in view.
+          </p>
+        </div>
+
         <Card className="shadow-lg border-slate-200">
           {/* Toggle Login vs Register */}
           <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
@@ -135,10 +145,16 @@ export const Login = () => {
                   }`}
                 >
                   <Stethoscope className="w-5 h-5 text-sky-600" />
-                  <span className="text-xs font-bold">Therapist</span>
+                  <span className="text-xs font-bold">
+                    Therapist{' '}
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-red-100 text-red-700">
+                      Preview
+                    </span>
+                  </span>
                   <span className="text-[10px] text-slate-500 text-center">Manage patients & programs</span>
                 </button>
               </div>
+              {role === 'THERAPIST' && <UnderConstructionNotice className="mt-3" />}
             </div>
           )}
 

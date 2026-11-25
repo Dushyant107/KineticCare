@@ -8,23 +8,19 @@ import {
   Dumbbell,
   Video,
   LineChart,
-  Flame,
-  MessageSquare,
   FileText,
 } from 'lucide-react';
 
 export const PatientSidebar = ({ onClose }) => {
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { label: 'Find Therapist', path: '/find-therapist', icon: UserCheck },
-    { label: 'Appointments', path: '/appointments', icon: Calendar },
     { label: 'My Program', path: '/my-program', icon: ClipboardList },
     { label: 'Exercise Library', path: '/exercises', icon: Dumbbell },
     { label: 'Live AI Session', path: '/live-session', icon: Video, highlight: true },
     { label: 'Progress Analytics', path: '/progress', icon: LineChart },
-    { label: 'Activity & Streaks', path: '/activity', icon: Flame },
-    { label: 'Messages', path: '/messages', icon: MessageSquare },
     { label: 'Reports', path: '/reports', icon: FileText },
+    { label: 'Find Therapist', path: '/find-therapist', icon: UserCheck, demo: true },
+    { label: 'Appointments', path: '/appointments', icon: Calendar, demo: true },
   ];
 
   return (
@@ -54,6 +50,11 @@ export const PatientSidebar = ({ onClose }) => {
               >
                 <Icon className="w-4 h-4" />
                 <span>{item.label}</span>
+                {item.demo && (
+                  <span className="ml-auto text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                    Demo
+                  </span>
+                )}
                 {item.highlight && (
                   <span className="ml-auto flex h-2 w-2 relative">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -68,8 +69,8 @@ export const PatientSidebar = ({ onClose }) => {
 
       <div className="px-3 pt-4 border-t border-slate-100">
         <div className="bg-sky-50 border border-sky-100 rounded-xl p-3.5 text-xs text-sky-900">
-          <p className="font-bold">✨ Need assistance?</p>
-          <p className="mt-1 text-sky-700">Connect with your assigned therapist or schedule a consultation anytime.</p>
+          <p className="font-bold">✨ Tip</p>
+          <p className="mt-1 text-sky-700">One Live AI Session a day keeps your streak going. My Program suggests what to do next.</p>
         </div>
       </div>
     </aside>

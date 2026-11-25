@@ -8,6 +8,7 @@ export const ProgressCircle = ({
   trackColor = '#E2E8F0',
   label,
   sublabel,
+  display, // optional text shown instead of the numeric value
 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -38,7 +39,7 @@ export const ProgressCircle = ({
         />
       </svg>
       <div className="absolute flex flex-col items-center justify-center text-center">
-        <span className="text-2xl font-black text-slate-900 leading-none">{value}</span>
+        <span className="text-2xl font-black text-slate-900 leading-none">{display ?? value}</span>
         {label && <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-1">{label}</span>}
         {sublabel && <span className="text-xs font-semibold text-slate-400">{sublabel}</span>}
       </div>

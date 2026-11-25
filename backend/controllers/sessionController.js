@@ -1,142 +1,119 @@
 import ExerciseSession from '../models/ExerciseSession.js';
 import DailyProgress from '../models/DailyProgress.js';
 import PatientProfile from '../models/PatientProfile.js';
-import RehabilitationProgram from '../models/RehabilitationProgram.js';
 import Notification from '../models/Notification.js';
+import {
+  EXERCISE_CATALOG,
+  isDateKey,
+  serverDateKey,
+  loadSessions,
+  summarizeSessions,
+  sessionDateKey,
+} from '../services/stats.js';
+
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+
+// Rebuild the DailyProgress row for one day from that day's sessions.
+const refreshDailyProgress = async (patientId, dateKey, allSessions) => {
+  const day = allSessions.filter((s) => sessionDateKey(s) === dateKey);
+  if (!day.length) return;
+  const avgOf = (f) => Math.round(day.reduce((a, s) => a + (s[f] || 0), 0) / day.length);
+
+  await DailyProgress.findOneAndUpdate(
+    { patientId, date: dateKey },
+    {
+      sessionsCompleted: day.length,
+      exercisesCompleted: new Set(day.map((s) => s.exerciseSlug)).size,
+      totalReps: day.reduce((a, s) => a + (s.completedReps || 0), 0),
+      totalDurationSeconds: day.reduce((a, s) => a + (s.durationSeconds || 0), 0),
+      averageQuality: avgOf('qualityScore'),
+      averageROM: avgOf('averageROM'),
+      bestROM: Math.max(...day.map((s) => s.bestROM || 0)),
+      activeDay: true,
+    },
+    { upsert: true, new: true }
+  );
+};
 
 export const saveSession = async (req, res) => {
   try {
     const patientId = req.user._id;
-    const {
-      exerciseSlug,
-      exerciseName,
-      programId,
-      durationSeconds = 60,
-      targetReps = 10,
-      completedReps = 10,
-      averageROM = 85,
-      bestROM = 95,
-      qualityScore = 90,
-      feedbackEvents = [],
-    } = req.body;
+    const body = req.body || {};
+
+    const exerciseSlug = String(body.exerciseSlug || '');
+    const catalog = EXERCISE_CATALOG[exerciseSlug];
+    if (!catalog) {
+      return res.status(400).json({ success: false, message: `Unknown exercise "${exerciseSlug}"` });
+    }
+
+    const completedReps = num(body.completedReps);
+    if (!completedReps || completedReps < 1) {
+      return res.status(400).json({ success: false, message: 'At least one completed repetition is required to save a session' });
+    }
+
+    const localDate = isDateKey(body.localDate) ? body.localDate : serverDateKey();
+    const repDetails = Array.isArray(body.repDetails)
+      ? body.repDetails.slice(0, 200).map((r) => ({
+          rom: clamp(Math.round(num(r.rom) || 0), 0, 180),
+          durationSeconds: clamp(Math.round((num(r.durationSeconds) || 0) * 10) / 10, 0, 600),
+          score: clamp(Math.round(num(r.score) || 0), 0, 100),
+        }))
+      : [];
 
     const session = await ExerciseSession.create({
       patientId,
-      exerciseSlug: exerciseSlug || 'knee_ext',
-      exerciseName: exerciseName || 'Seated Knee Extension',
-      programId,
-      durationSeconds,
-      targetReps,
-      completedReps,
-      averageROM,
-      bestROM,
-      qualityScore,
-      feedbackEvents,
+      exerciseSlug,
+      exerciseName: catalog.name,
+      programId: body.programId || undefined,
+      durationSeconds: clamp(Math.round(num(body.durationSeconds) || 0), 0, 4 * 60 * 60),
+      targetReps: clamp(Math.round(num(body.targetReps) || completedReps), 1, 200),
+      completedReps: clamp(Math.round(completedReps), 1, 500),
+      averageROM: clamp(Math.round(num(body.averageROM) || 0), 0, 180),
+      bestROM: clamp(Math.round(num(body.bestROM) || 0), 0, 180),
+      qualityScore: clamp(Math.round(num(body.qualityScore) || 0), 0, 100),
+      trackingRatio: clamp(num(body.trackingRatio) ?? 1, 0, 1),
+      repDetails,
+      feedbackEvents: Array.isArray(body.feedbackEvents) ? body.feedbackEvents.slice(0, 20).map(String) : [],
+      localDate,
       completedAt: new Date(),
     });
 
-    // Retrieve active program to compute program adherence
-    const activeProgram = await RehabilitationProgram.findOne({
-      patientId,
-      status: 'ACTIVE',
-    });
+    const sessions = await loadSessions(patientId);
+    await refreshDailyProgress(patientId, localDate, sessions);
 
-    const totalAssignedExercises = activeProgram?.exercises?.length || 1;
+    const stats = summarizeSessions(sessions, localDate);
 
-    // Fetch all sessions completed today by this patient
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayStart = new Date(todayStr);
-    const todayEnd = new Date(todayStr);
-    todayEnd.setDate(todayEnd.getDate() + 1);
+    // Keep the profile's cached streak fields in sync (used by the topbar / therapist views).
+    const profile = await PatientProfile.findOneAndUpdate(
+      { userId: patientId },
+      {
+        currentStreak: stats.currentStreak,
+        longestStreak: stats.longestStreak,
+        activeDaysCount: stats.activeDays,
+        lastActiveDate: new Date(),
+        ...(stats.recoveryScore != null ? { recoveryScore: stats.recoveryScore } : {}),
+      },
+      { upsert: true, new: true }
+    );
 
-    const todaySessions = await ExerciseSession.find({
-      patientId,
-      completedAt: { $gte: todayStart, $lt: todayEnd },
-    });
-
-    const uniqueCompletedSlugs = new Set(todaySessions.map(s => s.exerciseSlug));
-    const exercisesCompletedCount = uniqueCompletedSlugs.size;
-    const adherencePercentage = Math.min(100, Math.round((exercisesCompletedCount / totalAssignedExercises) * 100));
-
-    // Update Daily Progress Aggregation
-    let daily = await DailyProgress.findOne({ patientId, date: todayStr });
-
-    if (!daily) {
-      daily = new DailyProgress({
-        patientId,
-        date: todayStr,
-        sessionsCompleted: 1,
-        exercisesCompleted: exercisesCompletedCount,
-        totalReps: completedReps,
-        totalDurationSeconds: durationSeconds,
-        averageQuality: qualityScore,
-        averageROM: averageROM,
-        bestROM: bestROM,
-        adherencePercentage,
-        activeDay: true,
+    const firstSessionToday = sessions.filter((s) => sessionDateKey(s) === localDate).length === 1;
+    if (firstSessionToday && [3, 7, 14, 30].includes(stats.currentStreak)) {
+      await Notification.create({
+        userId: patientId,
+        type: 'STREAK_MILESTONE',
+        title: `🔥 ${stats.currentStreak}-Day Streak!`,
+        message: `You've exercised ${stats.currentStreak} days in a row. Keep it going!`,
       });
-    } else {
-      daily.sessionsCompleted += 1;
-      daily.exercisesCompleted = exercisesCompletedCount;
-      daily.totalReps += completedReps;
-      daily.totalDurationSeconds += durationSeconds;
-      daily.averageQuality = Math.round((daily.averageQuality + qualityScore) / 2);
-      daily.averageROM = Math.round((daily.averageROM + averageROM) / 2);
-      daily.bestROM = Math.max(daily.bestROM, bestROM);
-      daily.adherencePercentage = Math.max(daily.adherencePercentage, adherencePercentage);
-      daily.activeDay = true;
-    }
-    await daily.save();
-
-    // Recalculate Streak
-    const profile = await PatientProfile.findOne({ userId: patientId });
-    if (profile) {
-      const today = new Date(todayStr);
-      const lastActive = profile.lastActiveDate ? new Date(new Date(profile.lastActiveDate).toISOString().split('T')[0]) : null;
-
-      // Increment streak when daily program adherence reaches 100% or patient completes assigned routines
-      const isProgramCompleteToday = adherencePercentage >= 100 || exercisesCompletedCount >= totalAssignedExercises;
-
-      if (isProgramCompleteToday) {
-        if (!lastActive) {
-          profile.currentStreak = 1;
-          profile.activeDaysCount = 1;
-          profile.lastActiveDate = today;
-        } else {
-          const diffDays = Math.floor((today - lastActive) / (1000 * 60 * 60 * 24));
-          if (diffDays === 1) {
-            profile.currentStreak += 1;
-            profile.activeDaysCount += 1;
-            profile.lastActiveDate = today;
-          } else if (diffDays > 1) {
-            profile.currentStreak = 1;
-            profile.activeDaysCount += 1;
-            profile.lastActiveDate = today;
-          } else if (diffDays === 0) {
-            // Already active today; ensure minimum 1
-            if (profile.currentStreak === 0) profile.currentStreak = 1;
-          }
-        }
-        profile.longestStreak = Math.max(profile.longestStreak || 0, profile.currentStreak);
-        await profile.save();
-
-        if (profile.currentStreak === 3 || profile.currentStreak === 7 || profile.currentStreak === 14) {
-          await Notification.create({
-            userId: patientId,
-            type: 'STREAK_MILESTONE',
-            title: `🔥 ${profile.currentStreak}-Day Streak Reached!`,
-            message: `Awesome work! You completed your daily rehabilitation program and maintained a ${profile.currentStreak}-day consecutive streak.`,
-          });
-        }
-      }
     }
 
     res.status(201).json({
       success: true,
-      message: 'Exercise session saved successfully',
+      message: 'Exercise session saved',
       session,
-      streak: profile ? profile.currentStreak : 1,
-      adherencePercentage,
+      streak: stats.currentStreak,
+      stats,
+      profile,
     });
   } catch (error) {
     console.error('saveSession error:', error);
@@ -146,10 +123,7 @@ export const saveSession = async (req, res) => {
 
 export const getMySessions = async (req, res) => {
   try {
-    const patientId = req.user._id;
-    const sessions = await ExerciseSession.find({ patientId })
-      .sort({ completedAt: -1 });
-
+    const sessions = await loadSessions(req.user._id);
     res.json({ success: true, count: sessions.length, sessions });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch sessions' });
@@ -158,12 +132,28 @@ export const getMySessions = async (req, res) => {
 
 export const getPatientSessions = async (req, res) => {
   try {
-    const { patientId } = req.params;
-    const sessions = await ExerciseSession.find({ patientId })
-      .sort({ completedAt: -1 });
-
+    const sessions = await loadSessions(req.params.patientId);
     res.json({ success: true, count: sessions.length, sessions });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch patient sessions' });
+  }
+};
+
+export const deleteSession = async (req, res) => {
+  try {
+    const patientId = req.user._id;
+    const session = await ExerciseSession.findOneAndDelete({ _id: req.params.id, patientId });
+    if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+
+    const dateKey = sessionDateKey(session);
+    const sessions = await loadSessions(patientId);
+    if (sessions.some((s) => sessionDateKey(s) === dateKey)) {
+      await refreshDailyProgress(patientId, dateKey, sessions);
+    } else {
+      await DailyProgress.deleteOne({ patientId, date: dateKey });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to delete session' });
   }
 };

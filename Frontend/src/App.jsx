@@ -14,8 +14,6 @@ import PatientProgram from './pages/patient/PatientProgram';
 import ExerciseLibrary from './pages/patient/ExerciseLibrary';
 import LiveSession from './pages/patient/LiveSession';
 import PatientProgress from './pages/patient/PatientProgress';
-import ActivityTimeline from './pages/patient/ActivityTimeline';
-import PatientMessages from './pages/patient/PatientMessages';
 import PatientReports from './pages/patient/PatientReports';
 
 // Therapist Portal Pages
@@ -70,8 +68,7 @@ function App() {
       <Route path="/exercises" element={<ProtectedRoute><ExerciseLibrary /></ProtectedRoute>} />
       <Route path="/live-session" element={<ProtectedRoute><LiveSession /></ProtectedRoute>} />
       <Route path="/progress" element={<ProtectedRoute><PatientProgress /></ProtectedRoute>} />
-      <Route path="/activity" element={<ProtectedRoute><ActivityTimeline /></ProtectedRoute>} />
-      <Route path="/messages" element={<ProtectedRoute><PatientMessages /></ProtectedRoute>} />
+      <Route path="/activity" element={<Navigate to="/progress" replace />} />
       <Route path="/reports" element={<ProtectedRoute><PatientReports /></ProtectedRoute>} />
 
       {/* Therapist Routes */}

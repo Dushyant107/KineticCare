@@ -1,5 +1,12 @@
 import RehabilitationProgram from '../models/RehabilitationProgram.js';
 import Notification from '../models/Notification.js';
+import {
+  EXERCISE_CATALOG,
+  isDateKey,
+  serverDateKey,
+  loadSessions,
+  buildRecommendations,
+} from '../services/stats.js';
 
 export const createProgram = async (req, res) => {
   try {
@@ -55,6 +62,46 @@ export const getMyProgram = async (req, res) => {
     res.json({ success: true, program });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch program' });
+  }
+};
+
+// "My Program": exercises the patient has already done, recommended again
+// with a progression target, plus any therapist-assigned program.
+export const getRecommendedProgram = async (req, res) => {
+  try {
+    const patientId = req.user._id;
+    const today = isDateKey(req.query.today) ? req.query.today : serverDateKey();
+
+    const [sessions, assignedProgram] = await Promise.all([
+      loadSessions(patientId),
+      RehabilitationProgram.findOne({ patientId, status: 'ACTIVE' }).populate('therapistId', 'name email avatar'),
+    ]);
+
+    const recommendations = buildRecommendations(sessions, today);
+    const doneSlugs = new Set(recommendations.map((r) => r.exerciseSlug));
+
+    // Exercises the tracker supports that the patient hasn't tried yet.
+    const notTried = Object.entries(EXERCISE_CATALOG)
+      .filter(([slug]) => !doneSlugs.has(slug))
+      .map(([slug, ex]) => ({
+        exerciseSlug: slug,
+        exerciseName: ex.name,
+        bodyPart: ex.bodyPart,
+        targetROM: ex.targetROM,
+        recommendedReps: ex.defaultReps,
+      }));
+
+    res.json({
+      success: true,
+      today,
+      recommendations,
+      notTried,
+      completedToday: recommendations.filter((r) => r.doneToday).length,
+      assignedProgram,
+    });
+  } catch (error) {
+    console.error('getRecommendedProgram error:', error);
+    res.status(500).json({ success: false, message: 'Failed to build program recommendations' });
   }
 };
 

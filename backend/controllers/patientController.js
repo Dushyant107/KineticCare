@@ -1,90 +1,77 @@
 import User from '../models/User.js';
 import PatientProfile from '../models/PatientProfile.js';
 import RehabilitationProgram from '../models/RehabilitationProgram.js';
-import ExerciseSession from '../models/ExerciseSession.js';
-import DailyProgress from '../models/DailyProgress.js';
-import Appointment from '../models/Appointment.js';
+import {
+  isDateKey,
+  serverDateKey,
+  loadSessions,
+  summarizeSessions,
+  buildRecommendations,
+  exerciseBreakdown,
+} from '../services/stats.js';
 
 export const getPatientDashboard = async (req, res) => {
   try {
     const patientId = req.user._id;
+    const today = isDateKey(req.query.today) ? req.query.today : serverDateKey();
 
-    // Get Patient Profile
     let profile = await PatientProfile.findOne({ userId: patientId }).populate('therapistId', 'name email avatar');
     if (!profile) {
       profile = await PatientProfile.create({ userId: patientId });
     }
 
-    // Lazy streak decay evaluation
-    const todayStr = new Date().toISOString().split('T')[0];
-    const today = new Date(todayStr);
-    if (profile.lastActiveDate) {
-      const lastActive = new Date(new Date(profile.lastActiveDate).toISOString().split('T')[0]);
-      const diffDays = Math.floor((today - lastActive) / (1000 * 60 * 60 * 24));
-      if (diffDays > 1 && profile.currentStreak > 0) {
-        profile.currentStreak = 0;
-        await profile.save();
+    const [sessions, activeProgram] = await Promise.all([
+      loadSessions(patientId),
+      RehabilitationProgram.findOne({ patientId, status: 'ACTIVE' }).populate('therapistId', 'name email avatar'),
+    ]);
+
+    const stats = summarizeSessions(sessions, today);
+    const recommendations = buildRecommendations(sessions, today).slice(0, 4);
+    const breakdown = exerciseBreakdown(sessions, today);
+
+    // Keep cached profile fields in sync (streak can decay without a new session).
+    if (profile.currentStreak !== stats.currentStreak || profile.longestStreak !== stats.longestStreak) {
+      profile.currentStreak = stats.currentStreak;
+      profile.longestStreak = stats.longestStreak;
+      profile.activeDaysCount = stats.activeDays;
+      await profile.save();
+    }
+
+    const insights = [];
+    if (!sessions.length) {
+      insights.push('Complete your first Live AI Session to start tracking your streak, form quality and range of motion.');
+    } else {
+      insights.push(
+        stats.activeToday
+          ? `You've exercised today. Current streak: ${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}.`
+          : stats.currentStreak > 0
+            ? `Do one session today to extend your ${stats.currentStreak}-day streak.`
+            : 'Your streak has reset. One session today starts a new one.'
+      );
+      if (stats.qualityChangeWeek != null) {
+        insights.push(
+          stats.qualityChangeWeek >= 0
+            ? `Form quality is up ${stats.qualityChangeWeek} points compared with last week.`
+            : `Form quality dropped ${Math.abs(stats.qualityChangeWeek)} points from last week. Slow down and use the full range.`
+        );
+      }
+      const best = [...breakdown].sort((a, b) => b.avgQuality - a.avgQuality)[0];
+      const weakest = [...breakdown].sort((a, b) => a.avgQuality - b.avgQuality)[0];
+      if (best) insights.push(`Your best exercise is ${best.exerciseName} at ${best.avgQuality}% average form.`);
+      if (weakest && weakest !== best && weakest.avgQuality < 75) {
+        insights.push(`${weakest.exerciseName} needs work (${weakest.avgQuality}% form). It's near the top of My Program.`);
       }
     }
 
-    // Get Active Program
-    const activeProgram = await RehabilitationProgram.findOne({
-      patientId,
-      status: 'ACTIVE',
-    }).populate('therapistId', 'name email avatar');
-
-    // Get Recent Sessions
-    const recentSessions = await ExerciseSession.find({ patientId })
-      .sort({ completedAt: -1 })
-      .limit(5);
-
-    // Get Today's Progress
-    const todayProgress = await DailyProgress.findOne({ patientId, date: todayStr });
-
-    // Get Upcoming Appointment
-    const upcomingAppointment = await Appointment.findOne({
-      patientId,
-      date: { $gte: todayStr },
-      status: { $in: ['CONFIRMED', 'PENDING'] },
-    })
-      .populate('therapistId', 'name email avatar')
-      .sort({ date: 1, startTime: 1 });
-
-    // Calculate deterministic insights
-    const totalSessions = await ExerciseSession.countDocuments({ patientId });
-    const avgQualityAgg = await ExerciseSession.aggregate([
-      { $match: { patientId } },
-      { $group: { _id: null, avgQuality: { $avg: '$qualityScore' }, avgROM: { $avg: '$averageROM' } } },
-    ]);
-
-    const overallAvgQuality = avgQualityAgg.length ? Math.round(avgQualityAgg[0].avgQuality) : 85;
-    const overallAvgROM = avgQualityAgg.length ? Math.round(avgQualityAgg[0].avgROM) : 105;
-
-    const insights = [
-      `Your current rehabilitation streak is ${profile.currentStreak || 0} days. Keep up the consistent effort!`,
-      `Your average movement quality is ${overallAvgQuality}%, indicating strong adherence to form guidelines.`,
-      totalSessions > 0
-        ? `You have completed ${totalSessions} total exercise sessions so far.`
-        : 'Complete your first AI-guided exercise session to generate detailed progress metrics.',
-    ];
-
     res.json({
       success: true,
+      today,
       dashboard: {
         profile,
         activeProgram,
-        todayProgress,
-        recentSessions,
-        upcomingAppointment,
-        stats: {
-          recoveryScore: profile.recoveryScore || 75,
-          currentStreak: profile.currentStreak || 0,
-          longestStreak: profile.longestStreak || 0,
-          activeDaysCount: profile.activeDaysCount || 0,
-          overallAvgQuality,
-          overallAvgROM,
-          totalSessions,
-        },
+        recentSessions: sessions.slice(0, 5),
+        recommendations,
+        stats,
         insights,
       },
     });

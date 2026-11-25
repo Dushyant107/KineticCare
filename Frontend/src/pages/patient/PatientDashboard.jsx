@@ -6,44 +6,42 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import StatCard from '../../components/ui/StatCard';
 import ProgressCircle from '../../components/ui/ProgressCircle';
-import Table from '../../components/ui/Table';
 import Skeleton from '../../components/ui/Skeleton';
-import {
-  Flame,
-  Activity,
-  CheckCircle2,
-  Calendar,
-  Video,
-  ChevronRight,
-  TrendingUp,
-  Award,
-  Sparkles,
-} from 'lucide-react';
+import { Flame, Activity, Video, ChevronRight, TrendingUp, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { todayKey, formatDateKey, daysAgoLabel } from '../../utils/date';
+
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+};
+
+const weekChange = (delta, unit) => {
+  if (delta == null) return { change: undefined, changeType: 'neutral' };
+  return {
+    change: `${delta >= 0 ? '+' : ''}${delta}${unit} vs last week`,
+    changeType: delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral',
+  };
+};
 
 export const PatientDashboard = () => {
   const { user, API_BASE_URL } = useAuth();
-  const [dashboardData, setDashboardData] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchDashboard();
-  }, []);
-
-  const fetchDashboard = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API_BASE_URL}/patients/dashboard`);
-      if (res.data.success) {
-        setDashboardData(res.data.dashboard);
+    (async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/patients/dashboard`, { params: { today: todayKey() } });
+        if (res.data.success) setData(res.data.dashboard);
+      } catch (err) {
+        console.error('Failed to fetch patient dashboard:', err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch patient dashboard:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
+  }, []);
 
   if (loading) {
     return (
@@ -60,141 +58,140 @@ export const PatientDashboard = () => {
     );
   }
 
-  const { stats, activeProgram, upcomingAppointment, recentSessions, insights } = dashboardData || {};
+  const { stats = {}, recommendations = [], recentSessions = [], insights = [] } = data || {};
+  const hasData = stats.totalSessions > 0;
+  const quality = weekChange(stats.qualityChangeWeek, ' pts');
+  const rom = weekChange(stats.romChangeWeek, '°');
 
   return (
     <div className="space-y-6">
       {/* Greeting Banner */}
-      <div className="bg-gradient-to-r from-sky-900 via-sky-800 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-md relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.1),transparent)] pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-gradient-to-r from-sky-900 via-sky-800 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-md">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Badge variant="primary" className="bg-sky-500/20 text-sky-200 border-sky-400/30">
-                Patient Recovery Portal
-              </Badge>
-              <span className="text-xs text-sky-200 font-medium">ACL & Joint Recovery</span>
-            </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Good morning, {user?.name || 'Rahul'} 👋
+              {greeting()}, {user?.name || user?.username} 👋
             </h1>
             <p className="text-xs sm:text-sm text-sky-100 max-w-xl mt-1 leading-relaxed">
-              Here is your rehabilitation overview. Stay consistent with your exercises to maximize joint recovery and range of motion.
+              {hasData
+                ? stats.activeToday
+                  ? `Nice work, you've already exercised today. ${stats.totalSessions} sessions logged so far.`
+                  : `You haven't exercised yet today. One session keeps your streak going.`
+                : 'Start your first AI-tracked session. Your streak, form quality and range of motion will show up here.'}
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              size="lg"
-              className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 shadow-lg cursor-pointer"
-              icon={Video}
-              onClick={() => navigate('/live-session')}
-            >
-              Start Today's AI Session
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            size="lg"
+            className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 shadow-lg cursor-pointer shrink-0"
+            icon={Video}
+            onClick={() => navigate(recommendations[0] ? `/live-session?exercise=${recommendations[0].exerciseSlug}&target=${recommendations[0].recommendedReps}` : '/live-session')}
+          >
+            Start Today's AI Session
+          </Button>
         </div>
       </div>
 
-      {/* Top Key Metrics */}
+      {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Recovery Score Circle Card */}
-        <Card className="flex flex-col items-center justify-center p-4 text-center border-slate-200">
+        <Card className="border-slate-200" bodyClassName="p-4 flex flex-col items-center justify-center text-center h-full">
           <ProgressCircle
-            value={stats?.recoveryScore || 84}
+            value={stats.recoveryScore ?? 0}
             size={100}
             strokeWidth={9}
             color="#0284C7"
-            label="Score"
-            sublabel="Product Index"
+            display={stats.recoveryScore == null ? '–' : undefined}
+            sublabel="Recovery"
           />
           <p className="text-xs font-bold text-slate-700 mt-2">Recovery Score</p>
-          <p className="text-[10px] text-slate-400">Based on ROM, Form & Adherence</p>
+          <p className="text-[10px] text-slate-400">Form 50% · ROM 30% · Consistency 20%</p>
         </Card>
 
         <StatCard
           title="Current Streak"
-          value={`🔥 ${stats?.currentStreak || 7}`}
-          unit="Days"
+          value={`🔥 ${stats.currentStreak ?? 0}`}
+          unit={stats.currentStreak === 1 ? 'Day' : 'Days'}
           icon={Flame}
           iconBg="bg-amber-50 text-amber-600"
-          change="+1 day"
-          changeType="positive"
-          description="Active consecutive days"
+          change={`Best: ${stats.longestStreak ?? 0}`}
+          changeType="neutral"
+          description={stats.activeToday ? 'Done today ✓' : 'Not yet today'}
         />
 
         <StatCard
           title="Average Form Quality"
-          value={`${stats?.overallAvgQuality || 91}%`}
+          value={hasData ? `${stats.avgQuality}%` : '–'}
           icon={Activity}
           iconBg="bg-emerald-50 text-emerald-600"
-          change="Optimal"
-          changeType="positive"
-          description="MediaPipe Landmark accuracy"
+          change={quality.change}
+          changeType={quality.changeType}
+          description={hasData ? `${stats.totalSessions} sessions` : 'No sessions yet'}
         />
 
         <StatCard
           title="Average ROM"
-          value={`${stats?.overallAvgROM || 118}°`}
+          value={hasData ? `${stats.avgROM}°` : '–'}
           icon={TrendingUp}
           iconBg="bg-sky-50 text-sky-600"
-          change="+6° this week"
-          changeType="positive"
-          description="Joint Range of Motion"
+          change={rom.change}
+          changeType={rom.changeType}
+          description={hasData ? `Best ${stats.bestROM}°` : 'Per-rep joint range'}
         />
       </div>
 
-      {/* Main Grid: Today's Plan & Upcoming Appointment */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Today's Program Plan */}
+        {/* Left: recommended plan + insights */}
         <div className="lg:col-span-2 space-y-6">
           <Card
-            title="Today's Rehabilitation Plan"
-            subtitle={activeProgram?.name || 'Knee Recovery — Phase 2'}
+            title="Today's Plan"
+            subtitle="Exercises you've done before, with today's suggested goal"
             action={
               <Button variant="ghost" size="sm" onClick={() => navigate('/my-program')}>
-                View Full Program <ChevronRight className="w-4 h-4" />
+                My Program <ChevronRight className="w-4 h-4" />
               </Button>
             }
           >
-            {activeProgram?.exercises ? (
+            {recommendations.length ? (
               <div className="space-y-3">
-                {activeProgram.exercises.map((ex, idx) => (
+                {recommendations.map((ex, idx) => (
                   <div
-                    key={ex.exerciseSlug || idx}
-                    className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-4 hover:border-sky-300 transition-all"
+                    key={ex.exerciseSlug}
+                    className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-4"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm">
-                        {idx + 1}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${ex.doneToday ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                        {ex.doneToday ? <CheckCircle2 className="w-5 h-5" /> : idx + 1}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <h4 className="text-sm font-bold text-slate-900">{ex.exerciseName}</h4>
-                        <p className="text-xs text-slate-500">
-                          {ex.sets} sets × {ex.reps} reps | Target ROM: {ex.targetROM}°
+                        <p className="text-xs text-slate-500 truncate">
+                          Goal {ex.recommendedReps} reps · last {daysAgoLabel(ex.daysSinceLast).toLowerCase()} at {ex.lastQuality}% form
                         </p>
                       </div>
                     </div>
                     <Button
-                      variant="outline"
+                      variant={ex.doneToday ? 'outline' : 'primary'}
                       size="sm"
-                      onClick={() => navigate(`/live-session?exercise=${ex.exerciseSlug}`)}
+                      onClick={() => navigate(`/live-session?exercise=${ex.exerciseSlug}&target=${ex.recommendedReps}`)}
                     >
-                      Start Exercise
+                      {ex.doneToday ? 'Again' : 'Start'}
                     </Button>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-500">No exercises assigned for today.</p>
+              <div className="text-center py-6 space-y-3">
+                <p className="text-xs text-slate-500">Your plan builds itself from the exercises you do. Pick one to start.</p>
+                <Button variant="primary" size="sm" onClick={() => navigate('/exercises')}>
+                  Browse Exercise Library
+                </Button>
+              </div>
             )}
           </Card>
 
-          {/* AI Clinical Insights */}
-          <Card title="AI Movement Insights" subtitle="Deterministic analytics from recent exercise sessions">
+          <Card title="Insights" subtitle="Based on your recorded sessions">
             <div className="space-y-3">
-              {insights?.map((insight, idx) => (
+              {insights.map((insight, idx) => (
                 <div key={idx} className="flex items-start gap-3 p-3 bg-sky-50/70 border border-sky-100 rounded-xl text-xs text-slate-800">
                   <Sparkles className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
                   <p className="leading-relaxed">{insight}</p>
@@ -204,72 +201,58 @@ export const PatientDashboard = () => {
           </Card>
         </div>
 
-        {/* Right Column: Upcoming Consultation & Quick Actions */}
+        {/* Right: week strip + recent sessions */}
         <div className="space-y-6">
-          <Card title="Upcoming Appointment">
-            {upcomingAppointment ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <img
-                    src={upcomingAppointment.therapistId?.avatar || 'https://images.unsplash.com/photo-1594824813566-88855ce7896c?w=150&auto=format&fit=crop&q=80'}
-                    alt={upcomingAppointment.therapistId?.name}
-                    className="w-12 h-12 rounded-full object-cover border border-slate-200"
-                  />
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">{upcomingAppointment.therapistId?.name}</h4>
-                    <p className="text-[11px] text-sky-600 font-semibold">Consultation Review</p>
+          <Card title="This Week" subtitle={`${stats.sessionsThisWeek ?? 0} sessions in the last 7 days`}>
+            <div className="grid grid-cols-7 gap-1.5">
+              {(stats.last7Days || []).map((d) => (
+                <div key={d.date} className="flex flex-col items-center gap-1">
+                  <div
+                    title={d.date}
+                    className={`w-full aspect-square rounded-lg flex items-center justify-center text-sm ${d.active ? 'bg-amber-100 border border-amber-200' : 'bg-slate-50 border border-slate-200'}`}
+                  >
+                    {d.active ? '🔥' : ''}
                   </div>
+                  <span className="text-[10px] font-semibold text-slate-400">
+                    {formatDateKey(d.date, { weekday: 'narrow' })}
+                  </span>
                 </div>
-
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Date:</span>
-                    <span className="font-bold text-slate-900">{upcomingAppointment.date}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Time:</span>
-                    <span className="font-bold text-slate-900">{upcomingAppointment.startTime} - {upcomingAppointment.endTime}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Type:</span>
-                    <Badge variant="success">{upcomingAppointment.appointmentType}</Badge>
-                  </div>
-                </div>
-
-                <Button variant="outline" className="w-full text-xs" onClick={() => navigate('/appointments')}>
-                  Manage Appointments
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center py-4 space-y-3">
-                <p className="text-xs text-slate-500">No upcoming appointments booked.</p>
-                <Button variant="primary" size="sm" onClick={() => navigate('/find-therapist')}>
-                  Find a Therapist
-                </Button>
-              </div>
-            )}
+              ))}
+            </div>
           </Card>
 
-          {/* Recent Sessions List */}
-          <Card title="Recent Activity" subtitle="Latest completed AI sessions">
-            <div className="space-y-3">
-              {recentSessions?.length ? (
-                recentSessions.slice(0, 4).map((s) => (
-                  <div key={s._id} className="flex items-center justify-between text-xs py-2 border-b border-slate-100 last:border-0">
-                    <div>
-                      <p className="font-bold text-slate-900">{s.exerciseName}</p>
-                      <p className="text-[10px] text-slate-400">{new Date(s.completedAt).toLocaleDateString()}</p>
+          <Card
+            title="Recent Sessions"
+            action={
+              hasData && (
+                <Button variant="ghost" size="sm" onClick={() => navigate('/progress')}>
+                  All <ChevronRight className="w-4 h-4" />
+                </Button>
+              )
+            }
+          >
+            {recentSessions.length ? (
+              <div className="divide-y divide-slate-100">
+                {recentSessions.map((s) => (
+                  <div key={s._id} className="flex items-center justify-between gap-3 text-xs py-2.5">
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 truncate">{s.exerciseName}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(s.completedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {s.completedReps}/{s.targetReps} reps
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-emerald-600">{s.qualityScore}% Quality</p>
-                      <p className="text-[10px] text-slate-500">{s.averageROM}° ROM</p>
+                    <div className="text-right shrink-0">
+                      <Badge variant={s.qualityScore >= 80 ? 'success' : s.qualityScore >= 60 ? 'warning' : 'danger'}>
+                        {s.qualityScore}%
+                      </Badge>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{s.averageROM}° ROM</p>
                     </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-xs text-slate-400 text-center py-4">No recent sessions</p>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-4">No sessions yet</p>
+            )}
           </Card>
         </div>
       </div>

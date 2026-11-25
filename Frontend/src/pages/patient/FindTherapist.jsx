@@ -8,6 +8,7 @@ import Select from '../../components/ui/Select';
 import Skeleton from '../../components/ui/Skeleton';
 import EmptyState from '../../components/ui/EmptyState';
 import BookAppointmentModal from '../../components/appointments/BookAppointmentModal';
+import DemoNotice from '../../components/ui/DemoNotice';
 import { Search, Star, Calendar, MapPin, Award, Stethoscope, Video } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -60,6 +61,10 @@ export const FindTherapist = () => {
           Discover verified clinical specialists, view working availability, and book online or in-person consultations.
         </p>
       </div>
+
+      <DemoNotice>
+        These are sample therapist profiles, not real clinicians. Booking is for demonstration only and may not work right now.
+      </DemoNotice>
 
       {bookingSuccessMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-xs font-semibold flex items-center justify-between">

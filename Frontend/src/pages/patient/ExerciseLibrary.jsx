@@ -13,7 +13,7 @@ export const EXERCISES = [
     name: 'Seated Knee Extension',
     bodyPart: 'Knee',
     difficulty: 'Easy',
-    targetROM: 160,
+    targetROM: 70,
     equipment: 'Chair',
     description: 'Sit upright in a chair and extend your lower leg forward until horizontal to strengthen quadriceps stability.',
     instructions: [
@@ -30,7 +30,7 @@ export const EXERCISES = [
     name: 'Left Arm Bicep Curl',
     bodyPart: 'Arm',
     difficulty: 'Easy',
-    targetROM: 140,
+    targetROM: 110,
     equipment: 'None / Light Dumbbell',
     description: 'Biceps flexion mobility exercise keeping upper arm locked tightly to ribs.',
     instructions: [
@@ -47,7 +47,7 @@ export const EXERCISES = [
     name: 'Right Arm Bicep Curl',
     bodyPart: 'Arm',
     difficulty: 'Easy',
-    targetROM: 140,
+    targetROM: 110,
     equipment: 'None / Light Dumbbell',
     description: 'Right arm bicep flexion exercise for elbow mobility.',
     instructions: [
@@ -63,7 +63,7 @@ export const EXERCISES = [
     name: 'Full Body Squat',
     bodyPart: 'Full Body',
     difficulty: 'Medium',
-    targetROM: 90,
+    targetROM: 80,
     equipment: 'Bodyweight',
     description: 'Controlled squat movement to improve hip, knee, and ankle joint stability.',
     instructions: [
@@ -80,7 +80,7 @@ export const EXERCISES = [
     name: 'Lateral Shoulder Raise',
     bodyPart: 'Shoulder',
     difficulty: 'Medium',
-    targetROM: 90,
+    targetROM: 80,
     equipment: 'None',
     description: 'Raise straight arm out to the side into a T-shape for deltoid abduction.',
     instructions: [
@@ -97,7 +97,7 @@ export const EXERCISES = [
     name: 'Front Shoulder Raise',
     bodyPart: 'Shoulder',
     difficulty: 'Easy',
-    targetROM: 90,
+    targetROM: 80,
     equipment: 'None',
     description: 'Raise straight arm forward directly in front of torso to shoulder height.',
     instructions: [
@@ -143,6 +143,9 @@ export const EXERCISES = [
     safetyTips: 'Avoid tilting your pelvis to force height.',
   },
 ];
+
+// Exercises the live tracker (public/exercise.html) can measure.
+const AI_TRACKED = new Set(['knee_ext', 'left_curl', 'right_curl', 'squat', 'shoulder_lat', 'shoulder_front']);
 
 export const ExerciseLibrary = () => {
   const [search, setSearch] = useState('');
@@ -213,7 +216,7 @@ export const ExerciseLibrary = () => {
               <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">{ex.description}</p>
 
               <div className="text-xs text-slate-500 pt-2 border-t border-slate-100 space-y-1">
-                <p><span className="font-semibold text-slate-700">Target ROM:</span> {ex.targetROM}°</p>
+                <p><span className="font-semibold text-slate-700">Target ROM:</span> {ex.targetROM}°{AI_TRACKED.has(ex.id) ? ' per rep' : ''}</p>
                 <p><span className="font-semibold text-slate-700">Muscles:</span> {ex.targetMuscles.join(', ')}</p>
               </div>
             </div>
@@ -233,9 +236,11 @@ export const ExerciseLibrary = () => {
                 size="sm"
                 className="flex-1"
                 icon={Video}
+                disabled={!AI_TRACKED.has(ex.id)}
+                title={AI_TRACKED.has(ex.id) ? undefined : 'AI tracking for this exercise is coming soon'}
                 onClick={() => navigate(`/live-session?exercise=${ex.id}`)}
               >
-                Start AI Session
+                {AI_TRACKED.has(ex.id) ? 'Start AI Session' : 'AI tracking soon'}
               </Button>
             </div>
           </Card>
@@ -274,6 +279,7 @@ export const ExerciseLibrary = () => {
               <Button
                 variant="primary"
                 icon={Video}
+                disabled={!AI_TRACKED.has(selectedExercise.id)}
                 onClick={() => {
                   const id = selectedExercise.id;
                   setSelectedExercise(null);
